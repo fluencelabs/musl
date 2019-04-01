@@ -295,7 +295,7 @@ static struct chunk *get_chunk_from_unsorted_bin(size_t n)
 	current = mal.bins[unsorted_bin_id].head;
 
 	while(current != 0 && current != mal.bins[unsorted_bin_id].tail) {
-		// it is a the first-fit strategy
+		// use the simple first-fit strategy
 		if(current->csize >= n) {
 			if (!pretrim(current, n, unsorted_bin_id, unsorted_bin_id)) {
 				unbin(current, unsorted_bin_id);
