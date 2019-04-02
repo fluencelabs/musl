@@ -284,7 +284,7 @@ static void trim(struct chunk *self, size_t n)
 	__bin_chunk(split);
 }
 
-// returns chunk which size is more then given n from the 64-th unsorted bin
+// returns chunk which size is more then given n from the 63-th unsorted bin
 // if there is no suitable chunk returns 0
 static struct chunk *get_chunk_from_unsorted_bin(size_t n)
 {
