@@ -99,6 +99,7 @@ static int bin_index_up(size_t x)
 	if (x <= 32) return x;
 	x--;
 	if (x < 512) return bin_tab[x/8-4] + 1;
+	if (x > 0x1c00) return 64;
 	return bin_tab[x/128-4] + 17;
 }
 
@@ -283,6 +284,34 @@ static void trim(struct chunk *self, size_t n)
 	__bin_chunk(split);
 }
 
+// returns chunk which size is more then given n from the 63-th unsorted bin
+// if there is no suitable chunk returns 0
+static struct chunk *get_chunk_from_unsorted_bin(size_t n)
+{
+	const int unsorted_bin_id = 63;
+	struct chunk *current = 0;
+
+	lock_bin(unsorted_bin_id);
+	current = mal.bins[unsorted_bin_id].head;
+
+	while(current != 0 && current != mal.bins[unsorted_bin_id].tail) {
+		// use the simple first-fit strategy
+		if(current->csize >= n) {
+			if (!pretrim(current, n, unsorted_bin_id, unsorted_bin_id)) {
+				unbin(current, unsorted_bin_id);
+			}
+
+			unlock_bin(unsorted_bin_id);
+			return current;
+		}
+
+		current = current->next;
+	}
+
+	unlock_bin(unsorted_bin_id);
+	return 0;
+}
+
 void *malloc(size_t n)
 {
 	struct chunk *c;
@@ -293,7 +322,7 @@ void *malloc(size_t n)
 	if (n > MMAP_THRESHOLD) {
 		size_t len = n + OVERHEAD + PAGE_SIZE - 1 & -PAGE_SIZE;
 		char *base = __mmap(0, len, PROT_READ|PROT_WRITE,
-			MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+				MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
 		if (base == (void *)-1) return 0;
 		c = (void *)(base + SIZE_ALIGN - OVERHEAD);
 		c->csize = len - (SIZE_ALIGN - OVERHEAD);
@@ -304,17 +333,25 @@ void *malloc(size_t n)
 	i = bin_index_up(n);
 	for (;;) {
 		uint64_t mask = mal.binmap & -(1ULL<<i);
-		if (!mask) {
+		if (i == 64) {
+			c = get_chunk_from_unsorted_bin(n);
+			if(c != 0) {
+				break;
+			}
+		}
+
+		if (i == 64 || !mask) {
 			c = expand_heap(n);
 			if (!c) return 0;
 			if (alloc_rev(c)) {
 				struct chunk *x = c;
 				c = PREV_CHUNK(c);
 				NEXT_CHUNK(x)->psize = c->csize =
-					x->csize + CHUNK_SIZE(c);
+						x->csize + CHUNK_SIZE(c);
 			}
 			break;
 		}
+
 		j = first_set(mask);
 		lock_bin(j);
 		c = mal.bins[j].head;
